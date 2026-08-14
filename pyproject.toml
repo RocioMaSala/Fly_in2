@@ -1,0 +1,22 @@
+[project]
+name = "fly_in"
+version = "1.0.0"
+description = "Design an efficient drone routing system that navigates multiple drones through connected zones, minimizing simulation turns and managing movement with restrictions."
+authors = [
+    {name = "romarti2"}
+]
+license = "romarti2"
+readme = "README.md"
+requires-python = ">3.10"
+dependencies = []
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "flake8 (>=7.3.0,<8.0.0)",
+    "mypy (>=2.1.0,<3.0.0)"
+]
