@@ -6,11 +6,25 @@ from map_parsing import map_creation
 
 
 class NoPathError(Exception):
+    """Raised when no valid path exists between a drone's current zone
+    and the end zone.
+
+    Args:
+        message: Human-readable description of the error.
+    """
+
     def __init__(self, message: str = "Invalid Path") -> None:
         super().__init__(f"{message}")
 
 
 class SimulationTimeoutError(Exception):
+    """Raised when the simulation runs past its maximum allowed turns
+    without delivering every drone.
+
+    Args:
+        message: Human-readable description of the error.
+    """
+
     def __init__(
         self,
         message: str = "Simulation exceeded maximum turn limit",
@@ -20,6 +34,17 @@ class SimulationTimeoutError(Exception):
 
 @dataclass
 class DroneSituation:
+    """ The mutable state of a single drone during the simulation.
+
+    Attributes:
+        drone_id: unique identifier of the drone.
+        actual_position: Name of the zone the drone currently occupies.
+        transit_destination: Name of the zone the drone is currently in
+            transit toward (used for multi-turn moves into 'restricted' zones),
+            or 'None' if the drone is not in transit.
+        reached_final_zone: Whether the drone has arrived at the end zone
+            and is considered delivered
+    """
     drone_id: int
     actual_position: str
     transit_destination: str | None = None
@@ -28,6 +53,22 @@ class DroneSituation:
 
 @dataclass
 class Simulation:
+    """Runs the turn_by-turn drone routing simulation over a 'DroneMap'.
+
+    Attributes:
+        static_map: The parsed, immutable network of zones and connections
+            the simulation runs on.
+        drone_list: All drones participating in the simulation, along with
+            their current state.
+        actual_zone_occupation: Mapping of zone name to the list of drone
+            ID's currently occupying it.
+        actual_conex_occupation: Mapping of each connection, as a 'frozenset'
+            of its two zone names, to the list of drone IDs currently
+            traversing it.
+        turn_count: Number of turns simulated so far.
+        movement_log: One entry per turn, containing the space-separated
+            movement notation for every drone that moved that turn."""
+
     static_map: DroneMap
     drone_list: list[DroneSituation] = field(default_factory=list)
     actual_zone_occupation: dict[str, list[int]] = field(default_factory=dict)
@@ -38,6 +79,11 @@ class Simulation:
     movement_log: list[str] = field(default_factory=list)
 
     def initialize_drones(self) -> None:
+        """Create every drone at the start zone and record its occupancy.
+        Populates 'drone_list' with one 'DroneSituation' per drone (using
+        'static_map.drone_number'), all starting at the map's 'start_hub'
+        zone, and registers them in 'actual_zone_occupation'.
+        """
         start_name = ""
         for zone in self.static_map.zone_map.values():
             if zone.start_zone:
@@ -59,6 +105,23 @@ class Simulation:
             drone_id += 1
 
     def dijkstra(self, start_name: str) -> tuple[float, list[str]]:
+        """Find the cheapest path from a zone to the map's end zone.
+
+        Uses Dijkstra's algorithm over the map's adjacency list, skipping
+        'blocked' zones entirely and weighting each destination zone by its
+        movement cost ('priority' cheapest, then 'normal', then 'restricted').
+
+        Args:
+            start_name: Name of the zone to start the search from.
+
+        Returns:
+            A tuple of the total path cost and the list of zone names
+            from 'start_name' to the end zone, inclusive of both ends.
+
+        Raises:
+            NoPathError: If the end zone is unreachable from 'start_name'
+                without crossing a 'blocked' zone.
+        """
         end_name = ""
         for zone in self.static_map.zone_map.values():
             if zone.finish_zone:
@@ -116,6 +179,19 @@ class Simulation:
         return (total_dist, path)
 
     def process_turn(self, capacity_info: bool = False) -> None:
+        """Advance the simulation by a single turn.
+
+        Recomputes each active drone's shortest path, processes drones
+        in order of shortest remaining path first (ties broken by drone ID),
+        and attempts to move each one: completing any pending transit into
+        a 'restricted' zone, or otherwise advancing toward the next zone on
+        its path when zone and connection capacity allow it. Zone/connection
+        occupancy and 'movement_log' are updated accordingly.
+
+        Args:
+            capacity_info: if 'True', print a per-zone and per-connection
+                occupancy report for this turn.
+        """
         self.turn_count += 1
         active_drones = [
             drone for drone in self.drone_list if not drone.reached_final_zone
@@ -238,12 +314,26 @@ class Simulation:
             for conn_key, drones in self.actual_conex_occupation.items():
                 conn_names = "-".join(sorted(conn_key))
                 capacity = self.static_map.link_capacity().get(conn_key, 1)
-            print(f"Connection {conn_names}: "
-                  f"{len(drones)}/{capacity} capacity used")
+                print(f"Connection {conn_names}: "
+                      f"{len(drones)}/{capacity} capacity used")
 
         self.movement_log.append(" ".join(turn_movements))
 
     def run_simulation(self, capacity_info: bool = False) -> None:
+        """Run the full simulation until every drone reaches the end zone.
+
+        Initializes all drones at the start zone and repeatedly calls
+        'process_turn' until 'reached_final_zone' is 'True' for every
+        drone, or the turn limit is exceeded.
+
+        Args:
+            capacity_info: if 'True', forwarded to 'process_turn' to print
+            per-turn occupancy reports.
+
+        Raises:
+            SimulationTimeoutError: If the simulation exceeds 1000 turns
+                without delivering every drone.
+        """
         self.initialize_drones()
         max_turns = 1000
         while not all(drone.reached_final_zone for drone in self.drone_list):

@@ -2,6 +2,17 @@ from map_creator import DroneMap, ZoneTypes
 
 
 def get_ansi_color(color_name: str | None) -> str:
+    """ Look up the ANSI color code for a zone's color tag.
+
+    Args:
+        color_name: the color name from the zone's metadata
+            (case insensitive), or 'None' if the zone has
+            no color set.
+
+    Returns:
+        The ANSI color code string matching 'color_name', or the code
+        for white if 'color_name' is 'None' or not recognized.
+    """
     color_dict = {
         "red": "31",
         "green": "32",
@@ -19,11 +30,28 @@ def get_ansi_color(color_name: str | None) -> str:
 
 
 def colorize(text: str, color_name: str | None) -> str:
+    """Wrap text in the ANSI escape codes for a given color.
+
+    Args:
+        text: The text to colorize.
+        color_name: The color name to look up via 'get_ansi_color'.
+
+    Returns:
+        'text' wrapped in the matching ANSI color code and reset code.
+    """
     code = get_ansi_color(color_name)
     return f"\033[{code}m{text}\033[0m"
 
 
 def get_form_symbol(zone_type: ZoneTypes) -> str:
+    """Get the display symbol used to represent a zone type.
+
+    Args:
+        zone_type: the zone type to look up.
+
+    Returns:
+        The single-character symbol associated with 'zone_type'.
+    """
     form_type = {
         ZoneTypes.NORMAL: "■",
         ZoneTypes.BLOCKED: "✕",
@@ -34,6 +62,15 @@ def get_form_symbol(zone_type: ZoneTypes) -> str:
 
 
 def display_static_map(drone_map: DroneMap) -> None:
+    """Print a colored grid representation of the drone network.
+
+    Lays out every zone on a grid according to its coordinates, printing
+    two lines per row: the zone's type symbol an its name, both colored
+    according to the zone's 'color' metadata.
+
+    Args:
+        drone_map: The parsed map whose zones should be displayed.
+    """
     max_x = max(zone.coord_x for zone in drone_map.zone_map.values())
     max_y = max(zone.coord_y for zone in drone_map.zone_map.values())
     min_y = min(zone.coord_y for zone in drone_map.zone_map.values())

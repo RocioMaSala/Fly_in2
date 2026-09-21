@@ -3,12 +3,23 @@ from map_creator import DroneMap, parse_zone, parse_connection
 
 
 class UsageError(Exception):
-    def __init__(self, message: str = "Usage Error: python3 XXXXX "
-                 "config.txt") -> None:
+    """Raised when the script is invoked with the wrong command-line usage.
+
+    Args:
+        message: Human-readable description of the error.
+    """
+    def __init__(self, message: str = "Usage Error: make run MAP='XXXXXX'"
+                 ) -> None:
         super().__init__(message)
 
 
 class MissingDroneNumber(Exception):
+    """ Raised when the map file does not declare a drone number at all.
+
+    Args:
+        message: Human-readable description of the error.
+    """
+
     def __init__(
             self, message: str = "Index Error: A drone number is needed"
             ) -> None:
@@ -16,6 +27,13 @@ class MissingDroneNumber(Exception):
 
 
 class DroneNumberError(Exception):
+    """Raised when the declared drone number is missing, malformed or out
+    of the accepted range.
+
+    Args:
+        message: Human-readable description of the error.
+    """
+
     def __init__(
             self, message: str = "Value Error: A valid drone number is needed"
             ) -> None:
@@ -23,6 +41,32 @@ class DroneNumberError(Exception):
 
 
 def map_creation() -> tuple[DroneMap, bool]:
+    """Parse the map file given on the command line into a 'DroneMap'.
+
+    Reads the path from 'sys.argv', validates the 'nb_drones' header, then
+    parses every zone and connection line into the returned 'DroneMap',
+    enforcing the suject's parser constraints: exactly one 'start_hub' and
+    one 'end_hub', no duplicate coordinates, no duplicate connections, and
+    drone count within the start/end hub capacities. The optional
+    '--capacity-info' flag is also read from the command line.
+
+    Returns:
+        A tuple of the fully populated 'DroneMap' and a boolean flag indicating
+        whether '--capacity-info' was passed on the command line.
+
+    Raises:
+        UsageError: If the command line does not contain exactly one
+            positional argument (the map file path).
+        MissingDroneNumber: If the file has no 'nb_drones' line
+            before any other content.
+        DroneNumberError: If the drone number is missing, not a valid
+            integer, not positive, or exceeds the allowed maximum.
+        ValueError: For any other parsing error - duplicate zone
+            coordinates, multiple or missing 'start_hub'/'end_hub',
+            connections referencing undefined zones, duplicate
+            connections, or a drone count exceeding hub capacity.
+        FileNotFoundError: If the given map file path does not exist.
+        """
     args = [arg for arg in sys.argv[1:] if not arg.startswith("--")]
     capacity_info = "--capacity-info" in sys.argv
     if len(args) != 1:
