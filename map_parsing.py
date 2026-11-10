@@ -1,6 +1,8 @@
 import sys
-from map_creator import DroneMap, parse_zone, parse_connection
+from map_creator import DroneMap
 from typing import TextIO
+from map_creator import ZoneTypeError, ZoneTypes
+from map_creator import CapacityError, Zone, Connection
 
 
 class UsageError(Exception):
@@ -199,6 +201,95 @@ class MapParser:
             elif line_clean.startswith("connection"):
                 self._handle_connection_line(line)
 
+    def _parse_zone(self, line: str, line_num: int) -> Zone:
+        """Parse a single zone dfinition line into a class 'Zone'.
+
+        Handles the "start_hub", "end_hub", and "hub" line prefixes,
+        the mandatory name and integer coordinates, and any optional
+        [zone=..., color=..., max_drones=...] metadata block.
+
+        Args:
+            line: Raw line of text from the map file.
+            line_num: 1-indexed line number, used for error reporting.
+
+        Returns:
+            The class 'Zone' described by the line.
+
+        Raises:
+            ValueError: If the zone name is invalid, the coordinates are
+            missing or non-integer, or the metadata block is malformed.
+            ZoneTypeError: If the "zone" metadata value is not a valid class
+            'ZoneTypes' member.
+        """
+        parts = line.strip().split()
+        hub_type = parts[0]
+        start_zone = hub_type == "start_hub:"
+        finish_zone = hub_type == "end_hub:"
+
+        name = parts[1]
+        if "-" in name:
+            raise ValueError(
+                f"Parsing Error: Zone name '{name}' "
+                f"cannot contain dashes, line {line_num}"
+                )
+
+        if " " in name:
+            raise ValueError(
+                f"Parsing Error: Zone name '{name}' "
+                f"cannot contain spaces, line {line_num}"
+                )
+
+        try:
+            coord_x = int(parts[2])
+            coord_y = int(parts[3])
+        except (IndexError, ValueError):
+            raise ValueError(
+                f"Parsing Error: Invalid or missing integer coordinates, "
+                f"line {line_num}"
+                )
+
+        zone_type = ZoneTypes.NORMAL
+        color = None
+        max_drones = 1
+
+        if "[" in line:
+            try:
+                metadata_part = line.split("[")[1].split("]")[0].strip()
+                metadata_pairs = metadata_part.split()
+                metadata_dict = {
+                    k: v for k, v in (pair.split("=") for
+                                      pair in metadata_pairs)
+                    }
+                for k, v in metadata_dict.items():
+                    if k == "zone":
+                        try:
+                            zone_type = ZoneTypes(v)
+                        except ValueError:
+                            raise ZoneTypeError(line_num)
+                    if k == "color":
+                        color = v
+                    if k == "max_drones":
+                        max_drones = int(v)
+
+            except ZoneTypeError:
+                raise
+            except Exception:
+                raise ValueError(
+                    "Parsing Error: Invalid metadata syntax, "
+                    f"line {line_num}"
+                    )
+
+        return Zone(
+            name=name,
+            coord_x=coord_x,
+            coord_y=coord_y,
+            start_zone=start_zone,
+            finish_zone=finish_zone,
+            max_drones=max_drones,
+            zone_type=zone_type,
+            color=color,
+            )
+
     def _handle_zone_line(self, line: str, line_clean: str) -> None:
         """Parse one zone line and register it on `drone_map`.
 
@@ -214,7 +305,7 @@ class MapParser:
                 previously seen zone, or if a second `start_hub` or
                 `end_hub` is found.
         """
-        zone = parse_zone(line, self.line_num)
+        zone = self._parse_zone(line, self.line_num)
         actual_coords = (zone.coord_x, zone.coord_y)
         if actual_coords in self.seen_coords:
             raise ValueError(
@@ -246,6 +337,72 @@ class MapParser:
 
         self.drone_map.zone_map[zone.name] = zone
 
+    def _parse_connection(self, line: str, line_num: int) -> Connection:
+        """Parse a single connection definition line into a class 'Connection'.
+
+        Handles the "connection: zone1-zone2 " syntax and the optional
+        "[max_link_capacity=...] metadata block.
+
+        Args:
+            line: Raw line of the text from the map file.
+            line_num: 1-indexed line number, used for error reporting.
+
+        Returns:
+            The class 'Connection' described by the line.
+
+        Raises:
+            ValueError: If the connection format is invalid, the two zone
+            names are identical, or the metadata block is malformed.
+            CapacityError: If 'max_link_capacity' is not a positive integer.
+        """
+        parts = line.strip().split()
+        try:
+            connection_part = parts[1]
+            if "-" not in connection_part:
+                raise ValueError
+            zone_start, zone_finish = connection_part.split("-", 1)
+
+        except (IndexError, ValueError):
+            raise ValueError(
+                "Parsing Error: Invalid connection format, expected "
+                f"'zone1-zone2', line {line_num}"
+                )
+
+        if zone_start == zone_finish:
+            raise ValueError(
+                "Parsing Error: A zone cannot connect to itself, "
+                f"line {line_num}"
+                )
+
+        max_capacity = 1
+
+        if "[" in line:
+            try:
+                content_inside = line.split("[")[1].split("]")[0].strip()
+
+                if "=" not in content_inside:
+                    raise ValueError
+
+                key, value = content_inside.split("=", 1)
+
+                if key.strip() != "max_link_capacity":
+                    raise ValueError
+
+                max_capacity = int(value.strip())
+
+                if max_capacity <= 0:
+                    raise CapacityError(line_num)
+
+            except CapacityError:
+                raise
+
+            except Exception:
+                raise ValueError(
+                    f"Parsing Error: Invalid connection metadata "
+                    f"syntax, line {line_num}")
+
+        return Connection(zone_start, zone_finish, max_capacity)
+
     def _handle_connection_line(self, line: str) -> None:
         """Parse one connection line and register it on `drone_map`.
 
@@ -257,7 +414,7 @@ class MapParser:
                 connection duplicates one already registered (in either
                 direction).
         """
-        connection = parse_connection(line, self.line_num)
+        connection = self._parse_connection(line, self.line_num)
 
         if connection.zone_start not in self.drone_map.zone_map:
             raise ValueError(
@@ -327,26 +484,3 @@ class MapParser:
                 "Parsing Error: Drone number is greater "
                 "than start_hub capacity"
                 )
-
-
-def map_creation() -> tuple[DroneMap, bool]:
-    """Parse the map file given on the command line into a `DroneMap`.
-
-    Thin backward-compatible wrapper around `MapParser`, kept so existing
-    callers (e.g. `fly_in.py`) do not need to change.
-
-    Returns:
-        A tuple of the fully populated `DroneMap` and the
-        `capacity_info` flag.
-
-    Raises:
-        UsageError: If the command line does not contain exactly one
-            positional argument (the map file path).
-        MissingDroneNumber: If the file has no ``nb_drones:`` line before
-            any other content.
-        DroneNumberError: If the drone number is missing, not a valid
-            integer, not positive, or exceeds the allowed maximum.
-        ValueError: For any other parsing error.
-        FileNotFoundError: If the given map file path does not exist.
-    """
-    return MapParser.from_argv().parse()

@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 import heapq
 
 from map_creator import DroneMap, ZoneTypes
-from map_parsing import map_creation
+from map_parsing import MapParser
 
 
 class NoPathError(Exception):
@@ -373,7 +373,7 @@ if __name__ == "__main__":
     }
 
     try:
-        my_map, capacity_info = map_creation()
+        my_map, capacity_info = MapParser.from_argv().parse()
         display_static_map(my_map)
         simu = Simulation(static_map=my_map)
         simu.run_simulation(capacity_info)

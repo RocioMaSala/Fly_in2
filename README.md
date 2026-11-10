@@ -157,7 +157,3 @@ Artificial Intelligence models were utilized during the creation of this project
 - Code Refactoring.
 
 - Documentation Architecture: Used to format, translate, and organize this README.md
-
-All AI-assisted code and documentation were reviewed, tested, and validated
-by the author, who can explain and justify every part of the implementation
-during peer review.

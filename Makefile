@@ -3,7 +3,6 @@ PIP        := pip
 SRC_DIR    := .
 MAIN_SCRIPT:= fly_in.py
 
-
 .PHONY: install run debug clean lint lint-strict
 
 all: install
@@ -16,7 +15,7 @@ install:
 
 run:
 	clear
-	$(PYTHON) $(MAIN_SCRIPT) $(FLAGS) $(MAP)
+	$(PYTHON) $(MAIN_SCRIPT) $(FLAGS) $(MAP) 
 
 debug:
 	@echo "Debugging simulation with arguments: $(ARGS)"
